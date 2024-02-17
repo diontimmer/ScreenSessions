@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html>
+   <head>
+      <link rel="stylesheet"
+         href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+      <link rel="stylesheet"
+         href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css" />
+      <style>
+         body {
+         background: url('https://wallpapers.com/images/featured/background-design-6tgpche84avnjqvz.jpg') no-repeat center center fixed; 
+         -webkit-background-size: cover;
+         -moz-background-size: cover;
+         -o-background-size: cover;
+         background-size: cover;
+         font-family: Arial, sans-serif;
+         padding: 20px;
+         color: #fff; /* Change the text color to white for better contrast with the background */
+         }
+         body > div[style*="position: absolute; top: -50000px;"] {
+         width: auto !important;
+         }
+         #sessionSelect {
+         width: 200px;
+         height: 35px;
+         border-radius: 5px;
+         border: 1px solid #ccc;
+         margin-left: 10px;
+         padding: 5px;
+         font-size: 16px;
+         }
+         #terminal {
+         width: 98%;
+         height: 800px;
+         background-color: #000;
+         border-radius: 5px;
+         padding: 10px;
+         color: #fff;
+         margin-top: 20px;
+         }
+         #panel {
+         background-color: rgba(255, 255, 255, 0.35); /* Semi-transparent white */
+         border-radius: 10px; /* Rounded corners */
+         padding: 20px; /* Some padding */
+         width: 80%; /* Adjust as needed */
+         margin: 0 auto; /* Center the panel */
+         }
+         #sessionPanel {
+         background-color: rgba(83, 83, 83, 0.4); /* Semi-transparent white */
+         border-radius: 10px; /* Rounded corners */
+         padding: 20px; /* Some padding */
+         margin: 0 auto; /* Center the panel */
+         display: flex;
+         align-items: center;
+         margin-bottom: 20px;
+         gap: 5px;
+         }
+         .modal {
+         display: none; /* Hidden by default */
+         position: fixed; /* Stay in place */
+         z-index: 1; /* Sit on top */
+         left: 0;
+         top: 0;
+         width: 100%; /* Full width */
+         height: 100%; /* Full height */
+         overflow: auto; /* Enable scroll if needed */
+         background-color: rgb(0,0,0); /* Fallback color */
+         background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+         }
+         .modal-content {
+         background-color: #81818157;
+         margin: 15% auto; /* 15% from the top and centered */
+         padding: 20px;
+         border: 1px solid #888;
+         width: 15%; /* Could be more or less, depending on screen size */
+         display: flex; /* Use flexbox */
+         flex-direction: column; /* Stack the children vertically */
+         align-items: center; /* Center the children horizontally */
+         justify-content: center; /* Center the children vertically */
+         }
+         #modal-buttons {
+         display: flex; /* Use flexbox */
+         justify-content: space-around; /* Distribute the buttons evenly */
+         width: 100%; /* Take up the full width of the parent */
+         /* make buttons bigger in size*/
+         gap: 3px;
+         }
+         modal-buttons button {
+         padding: 15px 25px; /* Increase padding */
+         font-size: 35px; /* Increase font size */
+         border: none;
+         cursor: pointer;
+         }
+         #modal-buttons button i {
+         margin-right: 5px; /* Add some space between the icon and the text */
+         }
+      </style>
+      <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
+      <script
+         src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+      <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+      <title>Screen Sessions</title>
+   </head>
+   <body>
+      <div id="confirmModal" class="modal">
+         <div class="modal-content">
+            <h2>⚠️ Warning! ⚠️</h2>
+            <p>Are you sure you want to kill the session?</p>
+            <div id="modal-buttons">
+               <button id="confirmKill"><i class="fa fa-check"></i>
+               Yes</button>
+               <button id="cancelKill"><i class="fa fa-times"></i>
+               No</button>
+            </div>
+         </div>
+      </div>
+      <div id="panel">
+         <div id="sessionPanel">
+            <label for="sessionSelect">Select Session:</label>
+            <select id="sessionSelect">
+               <!-- Sessions will be dynamically populated here -->
+            </select>
+            <label for="newSessionInput">New Session:</label>
+            <input type="text" id="newSessionInput">
+            <button id="newSessionButton"><i class="fas fa-plus-circle"></i>
+            Create</button>
+            <button id="killSessionButton"><i
+               class="fas fa-times-circle"></i> Kill</button>
+            <button id="clearTerminalButton"><i class="fas fa-eraser"></i>
+            Clear Log</button>
+         </div>
+         <div id="terminal"></div>
+      </div>
+      <script>
+         const socket = io();
+         const term = new Terminal(
+             {
+                 theme: {
+                     background: '#000000',
+                     foreground: '#ffffff'
+                 },
+                 cursorBlink: true,
+                 tabStopWidth: 4,
+                 cols: 160,
+                 rows: 29
+             }
+         );
+         term.open(document.getElementById('terminal'));
+         
+         const fitAddon = new FitAddon.FitAddon();
+         
+         term.loadAddon(fitAddon);
+         
+         fitAddon.fit();
+         
+         window.addEventListener('resize', () => {
+             fitAddon.fit();
+         });
+         
+         
+         
+         
+         let buffer = '';
+         term.onData(data => {
+         if (data.charCodeAt(0) === 127) { // ASCII value for backspace
+             // Remove the last character from the buffer
+             buffer = buffer.slice(0, -1);
+             // Remove the last character from the terminal
+             term.write('\b \b');
+         } else {
+             buffer += data;
+             term.write(data);
+             if (data.endsWith('\r')) { // '\r' is carriage return, which is what xterm.js sends when enter is pressed
+                 // remove typed input from the terminal
+                 term.write('\x1b[2K\r');
+                 let session = document.getElementById('sessionSelect').value;
+                 socket.emit('input', { input: buffer, session: session });
+                 buffer = '';
+             }
+         }
+         });
+         
+         socket.on('connect', () => {
+         socket.emit('request_sessions'); // Request sessions list on connect
+         });
+         
+         socket.on('sessions_list', (data) => {
+         populateSessions(data.sessions);
+         // Optionally, automatically switch to the first session
+         if(data.sessions.length > 0) {
+             let firstSession = data.sessions[0];
+             document.getElementById('sessionSelect').value = firstSession;
+             socket.emit('switch_session', { session: firstSession });
+         }
+         });
+         
+         socket.on('command_output', (data) => {
+         term.write(data.output);
+         // move the cursor to the end of the terminal if last input ends with $
+         if (!data.output.endsWith('$ ')) {
+             term.write('\r\n')
+         
+         }
+         });
+         
+         document.getElementById('sessionSelect').addEventListener('change', function() {
+         term.clear(); // Clear the terminal
+         socket.emit('switch_session', { session: this.value });
+         });
+         
+         // Add this JavaScript after your existing JavaScript
+         document.getElementById('newSessionButton').addEventListener('click', function() {
+         let newSessionName = document.getElementById('newSessionInput').value;
+         if (newSessionName) {
+             socket.emit('create_session', { session: newSessionName });
+         }
+         });
+         
+         document.getElementById('killSessionButton').addEventListener('click', function() {
+         // Show the modal
+         document.getElementById('confirmModal').style.display = "block";
+         });
+         
+         document.getElementById('confirmKill').addEventListener('click', function() {
+         // Emit the 'kill_session' event
+         let session = document.getElementById('sessionSelect').value;
+         if (session) {
+             socket.emit('kill_session', { session: session });
+         }
+         // Hide the modal
+         document.getElementById('confirmModal').style.display = "none";
+         });
+         
+         document.getElementById('cancelKill').addEventListener('click', function() {
+         // Hide the modal
+         document.getElementById('confirmModal').style.display = "none";
+         });
+         
+         document.getElementById('clearTerminalButton').addEventListener('click', function() {
+         term.clear();
+         let session = document.getElementById('sessionSelect').value;
+         if (session) {
+             socket.emit('clear_session', { session: session });
+         }
+         });
+         
+         socket.on('session_created', (data) => {
+         // The server should send back the name of the new session
+         let newSessionName = data.session;
+         // Add the new session to the dropdown
+         const select = document.getElementById('sessionSelect');
+         const option = document.createElement('option');
+         option.value = newSessionName;
+         option.text = newSessionName;
+         select.appendChild(option);
+         // Select the new session
+         select.value = newSessionName;
+         // Switch to the new session
+         // clear the terminal
+         term.clear();
+         term.write('Session ' + newSessionName + ' created.\r\n');
+         socket.emit('switch_session', { session: newSessionName });
+         // Clear the new session input
+         document.getElementById('newSessionInput').value = '';
+         });
+         
+         // session killed, remove it from the dropdown and swatch to the first session
+         socket.on('session_killed', (data) => {
+         let session = data.session;
+         const select = document.getElementById('sessionSelect');
+         for (let i = 0; i < select.options.length; i++) {
+             if (select.options[i].value === session) {
+                 select.remove(i);
+                 break;
+             }
+         }
+         if (select.options.length > 0) {
+             let firstSession = select.options[0].value;
+             select.value = firstSession;
+             socket.emit('switch_session', { session: firstSession });
+         }
+         });
+         
+         function populateSessions(sessions) {
+         const select = document.getElementById('sessionSelect');
+         select.innerHTML = ''; // Clear existing options
+         sessions.forEach(session => {
+             const option = document.createElement('option');
+             option.value = session;
+             option.text = session;
+             select.appendChild(option);
+         });
+         }
+      </script>
+   </body>
+</html>
