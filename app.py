@@ -190,4 +190,4 @@ def on_clear_session(data):
 
 if __name__ == "__main__":
     check_session_loggers()
-    socketio.run(app, debug=True)
+    socketio.run(app, debug=False)
