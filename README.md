@@ -8,7 +8,7 @@ This tool is used to monitor various GNU screen sessions remotely through a nice
 
 ## Installation
 - Install requirements.txt using your Python interpreter of choice by running ```pip install -r requirements``` with your environment activated.
-- Run it as a flask app by running the command: ```flask run``` in the script root folder, or by simply running the start.sh script file. The start script file can be populated with the arguments described below.
+- Run it as a flask app by running the start.sh script file. The start script file can be populated with the arguments described below. This is just a regular Flask startup, so any custom startup command should work.
 
 If you're feeling risky, you can whitelist scripts/commands in the config.json for you to run in the containers. DO THIS AT YOUR OWN RISK! No wildcard system is implemented for this, only exactly whitelisted commands will run. This system could be used to run pre-set user scripts.<br><br>
 Flask has arguments which you can append to the startup command for more control, such as ```--host <ip>``` for a custom host, ```--port <port>``` for a custom port or ```--cert <certificate>``` for local https support.
